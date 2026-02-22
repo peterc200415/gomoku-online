@@ -6,7 +6,7 @@ _Learn about the person you're helping. Update this as you go._
 - **What to call them:** Peter
 - **Pronouns:** _(optional)_
 - **Timezone:** Asia/Taipei
-- **Notes:** Prefers Chinese; wants future notes written into Joplin.
+- **Notes:** Prefers Chinese; when user says "筆記", it means Joplin; wants future notes written into Joplin.
 
 ## Context
 
