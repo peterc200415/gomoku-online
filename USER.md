@@ -6,7 +6,7 @@ _Learn about the person you're helping. Update this as you go._
 - **What to call them:** Peter
 - **Pronouns:** _(optional)_
 - **Timezone:** Asia/Taipei
-- **Notes:** Prefers Chinese; when user says "筆記", it means Joplin; wants future notes written into Joplin. Email rules: for messages where Peter is not the primary recipient, once read, auto-classify/archive; if Peter is the primary recipient, convert actionable items into todos.
+- **Notes:** Prefers Chinese; when user says "筆記", it means Joplin; wants future notes written into Joplin. Email rules: for messages where Peter is not the primary recipient, once read, auto-classify/archive; if Peter is the primary recipient, convert actionable items into todos. Work-hours cadence: during 08:00-18:00, run email triage at every top of the hour.
 
 ## Context
 
