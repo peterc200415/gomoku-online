@@ -56,7 +56,8 @@ let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
 
 function connect() {
   ws?.close();
-  ws = new WebSocket(`ws://${location.host}`);
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
   ws.onopen = () => statusEl.textContent = '已連線，請先登入';
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
