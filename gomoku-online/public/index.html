@@ -53,12 +53,19 @@ const roomsEl = document.getElementById('rooms');
 
 let ws, side = 0, turn = 1, winner = 0, username = '';
 let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+let reconnectTimer = null;
 
 function connect() {
   ws?.close();
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = () => statusEl.textContent = '已連線，請先登入';
+  statusEl.textContent = '連線中...';
+
+  ws.onopen = () => {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    statusEl.textContent = '已連線，請先登入';
+  };
+
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'auth') {
@@ -81,6 +88,15 @@ function connect() {
         roomsEl.appendChild(li);
       });
     }
+  };
+
+  ws.onerror = () => {
+    statusEl.textContent = 'WebSocket 連線錯誤（請檢查 NPM WebSocket 代理）';
+  };
+
+  ws.onclose = () => {
+    statusEl.textContent = '連線中斷，2 秒後重連...';
+    reconnectTimer = setTimeout(connect, 2000);
   };
 }
 
