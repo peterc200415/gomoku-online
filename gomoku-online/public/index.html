@@ -116,17 +116,28 @@ function draw() {
   statusEl.textContent = text;
 }
 
+const userEl = document.getElementById('user');
+const passEl = document.getElementById('pass');
+const roomEl = document.getElementById('room');
+
+function canSend() {
+  return ws && ws.readyState === WebSocket.OPEN;
+}
+
 document.getElementById('register').onclick = () => {
-  ws.send(JSON.stringify({ type:'register', username: user.value.trim(), password: pass.value }));
+  if (!canSend()) return alert('連線尚未建立，請稍後再試');
+  ws.send(JSON.stringify({ type:'register', username: userEl.value.trim(), password: passEl.value }));
 };
 document.getElementById('login').onclick = () => {
-  ws.send(JSON.stringify({ type:'login', username: user.value.trim(), password: pass.value }));
+  if (!canSend()) return alert('連線尚未建立，請稍後再試');
+  ws.send(JSON.stringify({ type:'login', username: userEl.value.trim(), password: passEl.value }));
 };
 document.getElementById('join').onclick = () => {
-  ws.send(JSON.stringify({ type:'join', roomId: room.value.trim() || 'demo-room' }));
+  if (!canSend()) return alert('連線尚未建立，請稍後再試');
+  ws.send(JSON.stringify({ type:'join', roomId: roomEl.value.trim() || 'demo-room' }));
 };
-document.getElementById('refreshRooms').onclick = () => ws.send(JSON.stringify({ type:'rooms' }));
-document.getElementById('reset').onclick = () => ws.send(JSON.stringify({ type:'reset' }));
+document.getElementById('refreshRooms').onclick = () => canSend() && ws.send(JSON.stringify({ type:'rooms' }));
+document.getElementById('reset').onclick = () => canSend() && ws.send(JSON.stringify({ type:'reset' }));
 
 canvas.addEventListener('click', (e) => {
   if (!ws || ws.readyState !== 1 || !side || winner || turn !== side) return;
