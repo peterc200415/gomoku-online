@@ -7,12 +7,27 @@
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; background: #f5f5f5; }
     .wrap { max-width: 980px; margin: 20px auto; padding: 12px; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
     input, button { padding: 8px 10px; }
     #status { margin: 8px 0 14px; font-weight: 700; }
-    canvas { background: #d7a96b; border: 2px solid #333; max-width: 100%; height: auto; }
+
+    /* Canvas: allow responsive scaling, but keep click mapping correct in JS */
+    canvas { background: #d7a96b; border: 2px solid #333; width: 600px; height: 600px; max-width: 100%; aspect-ratio: 1 / 1; display: block; }
+
     .rooms { background:#fff; border:1px solid #ddd; padding:8px; margin:10px 0; }
+    .rooms ul { margin: 6px 0 0; padding-left: 18px; }
     .rooms li { margin: 4px 0; }
+
+    /* Mobile layout */
+    @media (max-width: 640px) {
+      .wrap { margin: 10px auto; padding: 10px; }
+      h2 { margin: 8px 0 10px; font-size: 18px; }
+      .row { flex-direction: column; align-items: stretch; }
+      input, button { width: 100%; box-sizing: border-box; }
+      #status { margin: 10px 0; }
+      .rooms { max-height: 180px; overflow: auto; }
+      canvas { width: 100%; height: auto; }
+    }
   </style>
 </head>
 <body>
@@ -261,14 +276,19 @@ canvas.addEventListener('click', (e) => {
     if (!ws || ws.readyState !== 1 || !side || winner || turn !== side) return;
   }
   const rect = canvas.getBoundingClientRect();
-  const x0 = e.clientX - rect.left;
-  const y0 = e.clientY - rect.top;
+  // Map CSS pixels -> canvas coordinate space (important for mobile scaling)
+  const sx = canvas.width / rect.width;
+  const sy = canvas.height / rect.height;
+  const x0 = (e.clientX - rect.left) * sx;
+  const y0 = (e.clientY - rect.top) * sy;
+
   const pad = 30;
   const gap = (canvas.width - pad*2) / (SIZE - 1);
   const x = Math.round((x0 - pad) / gap);
   const y = Math.round((y0 - pad) / gap);
+
   if (mode === 'solo') {
-    if (tryPlace(x,y,1)) {
+    if (tryPlace(x, y, 1)) {
       draw();
       setTimeout(aiMove, 120);
     }
