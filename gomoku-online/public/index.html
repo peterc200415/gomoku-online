@@ -17,9 +17,17 @@
 </head>
 <body>
 <div class="wrap">
-  <h2>五子棋網路對戰（含帳號 / 多房間）</h2>
+  <h2>五子棋（單人 / 線上雙人 / 觀戰）</h2>
 
   <div class="row">
+    <b>模式：</b>
+    <button id="modeSolo">單人</button>
+    <button id="modeOnline">線上對戰</button>
+    <button id="modeWatch">觀戰</button>
+    <span id="modeHint"></span>
+  </div>
+
+  <div id="onlineAuth" class="row" style="display:none;">
     <input id="user" placeholder="帳號" />
     <input id="pass" type="password" placeholder="密碼" />
     <button id="register">註冊</button>
@@ -27,19 +35,19 @@
     <span id="auth"></span>
   </div>
 
-  <div class="row">
+  <div id="onlineRoom" class="row" style="display:none;">
     <input id="room" value="demo-room" />
     <button id="join">加入房間</button>
     <button id="refreshRooms">刷新房間</button>
     <button id="reset">重置棋盤</button>
   </div>
 
-  <div class="rooms">
+  <div id="roomsWrap" class="rooms" style="display:none;">
     <b>房間列表：</b>
     <ul id="rooms"></ul>
   </div>
 
-  <div id="status">尚未連線</div>
+  <div id="status">請選擇模式</div>
   <canvas id="board" width="600" height="600"></canvas>
 </div>
 
@@ -50,12 +58,19 @@ const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 const authEl = document.getElementById('auth');
 const roomsEl = document.getElementById('rooms');
+const modeHintEl = document.getElementById('modeHint');
 
+const onlineAuthEl = document.getElementById('onlineAuth');
+const onlineRoomEl = document.getElementById('onlineRoom');
+const roomsWrapEl = document.getElementById('roomsWrap');
+
+let mode = 'solo'; // solo | online | watch
 let ws, side = 0, turn = 1, winner = 0, username = '';
 let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
 let reconnectTimer = null;
 
 function connect() {
+  if (mode === 'solo') return;
   ws?.close();
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
@@ -63,7 +78,9 @@ function connect() {
 
   ws.onopen = () => {
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    statusEl.textContent = '已連線，請先登入';
+    statusEl.textContent = mode === 'watch' ? '已連線：觀戰模式（加入房間以觀戰）' : '已連線，請先登入';
+    // 連線後先抓房間列表
+    ws.send(JSON.stringify({ type:'rooms' }));
   };
 
   ws.onmessage = (e) => {
@@ -127,8 +144,13 @@ function draw() {
     }
   }
 
-  let text = side ? `你是${side===1?'黑子':'白子'} | 輪到${turn===1?'黑子':'白子'}` : '觀戰模式';
-  if (winner) text = `勝利：${winner===1?'黑子':'白子'}`;
+  let text;
+  if (mode === 'solo') {
+    text = winner ? `勝利：${winner===1?'你(黑)':'電腦(白)'}` : `單人模式｜輪到${turn===1?'你(黑)':'電腦(白)'}`;
+  } else {
+    text = side ? `線上模式｜你是${side===1?'黑子':'白子'} | 輪到${turn===1?'黑子':'白子'}` : '觀戰模式';
+    if (winner) text = `勝利：${winner===1?'黑子':'白子'}`;
+  }
   statusEl.textContent = text;
 }
 
@@ -136,9 +158,82 @@ const userEl = document.getElementById('user');
 const passEl = document.getElementById('pass');
 const roomEl = document.getElementById('room');
 
+function resetLocal() {
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  turn = 1;
+  winner = 0;
+  side = 1;
+  draw();
+}
+
+function inBounds(x,y){ return x>=0 && y>=0 && x<SIZE && y<SIZE; }
+function checkWin(x,y,s){
+  const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+  for (const [dx,dy] of dirs) {
+    let n=1;
+    for (const k of [1,-1]) {
+      let nx=x+dx*k, ny=y+dy*k;
+      while (inBounds(nx,ny) && board[ny][nx]===s) { n++; nx+=dx*k; ny+=dy*k; }
+    }
+    if (n>=5) return true;
+  }
+  return false;
+}
+
+function tryPlace(x,y,s){
+  if (!inBounds(x,y) || board[y][x]!==0 || winner) return false;
+  board[y][x]=s;
+  if (checkWin(x,y,s)) winner=s;
+  turn = winner ? turn : (s===1?2:1);
+  return true;
+}
+
+function aiMove(){
+  if (mode!=='solo' || winner || turn!==2) return;
+  // 1) winning move
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++) if (board[y][x]===0){
+    board[y][x]=2; const win=checkWin(x,y,2); board[y][x]=0;
+    if (win){ tryPlace(x,y,2); draw(); return; }
+  }
+  // 2) block player win
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++) if (board[y][x]===0){
+    board[y][x]=1; const win=checkWin(x,y,1); board[y][x]=0;
+    if (win){ tryPlace(x,y,2); draw(); return; }
+  }
+  // 3) center preference
+  const cx=(SIZE-1)/2, cy=(SIZE-1)/2;
+  let best=null;
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++) if (board[y][x]===0){
+    const d=Math.abs(x-cx)+Math.abs(y-cy);
+    if (!best || d<best.d) best={x,y,d};
+  }
+  if (best) { tryPlace(best.x,best.y,2); draw(); }
+}
+
+function setMode(next){
+  mode = next;
+  modeHintEl.textContent = mode==='solo' ? '（不需登入，直接下棋）' : (mode==='online' ? '（需登入才能下棋）' : '（不需登入，只看盤）');
+  const showOnline = mode!=='solo';
+  onlineAuthEl.style.display = showOnline && mode==='online' ? '' : 'none';
+  onlineRoomEl.style.display = showOnline ? '' : 'none';
+  roomsWrapEl.style.display = showOnline ? '' : 'none';
+  if (mode==='solo') {
+    ws?.close();
+    resetLocal();
+  } else {
+    side = 0; winner = 0; turn = 1;
+    connect();
+    draw();
+  }
+}
+
 function canSend() {
   return ws && ws.readyState === WebSocket.OPEN;
 }
+
+document.getElementById('modeSolo').onclick = () => setMode('solo');
+document.getElementById('modeOnline').onclick = () => setMode('online');
+document.getElementById('modeWatch').onclick = () => setMode('watch');
 
 document.getElementById('register').onclick = () => {
   if (!canSend()) return alert('連線尚未建立，請稍後再試');
@@ -149,14 +244,22 @@ document.getElementById('login').onclick = () => {
   ws.send(JSON.stringify({ type:'login', username: userEl.value.trim(), password: passEl.value }));
 };
 document.getElementById('join').onclick = () => {
+  if (mode==='solo') return;
   if (!canSend()) return alert('連線尚未建立，請稍後再試');
   ws.send(JSON.stringify({ type:'join', roomId: roomEl.value.trim() || 'demo-room' }));
 };
 document.getElementById('refreshRooms').onclick = () => canSend() && ws.send(JSON.stringify({ type:'rooms' }));
-document.getElementById('reset').onclick = () => canSend() && ws.send(JSON.stringify({ type:'reset' }));
+document.getElementById('reset').onclick = () => {
+  if (mode==='solo') { resetLocal(); return; }
+  canSend() && ws.send(JSON.stringify({ type:'reset' }));
+};
 
 canvas.addEventListener('click', (e) => {
-  if (!ws || ws.readyState !== 1 || !side || winner || turn !== side) return;
+  if (mode === 'solo') {
+    if (winner || turn !== 1) return;
+  } else {
+    if (!ws || ws.readyState !== 1 || !side || winner || turn !== side) return;
+  }
   const rect = canvas.getBoundingClientRect();
   const x0 = e.clientX - rect.left;
   const y0 = e.clientY - rect.top;
@@ -164,10 +267,17 @@ canvas.addEventListener('click', (e) => {
   const gap = (canvas.width - pad*2) / (SIZE - 1);
   const x = Math.round((x0 - pad) / gap);
   const y = Math.round((y0 - pad) / gap);
+  if (mode === 'solo') {
+    if (tryPlace(x,y,1)) {
+      draw();
+      setTimeout(aiMove, 120);
+    }
+    return;
+  }
   ws.send(JSON.stringify({ type:'move', x, y }));
 });
 
-connect();
+setMode('solo');
 draw();
 </script>
 </body>
