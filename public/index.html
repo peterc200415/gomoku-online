@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>五子棋網路對戰</title>
+  <meta name="description" content="五子棋線上對戰平台 — 單人 AI 對弈、線上雙人、觀戰模式" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <h2>♟️ 五子棋（單人 / 線上雙人 / 觀戰）</h2>
+
+  <!-- Mode selection -->
+  <div class="glass">
+    <div class="row">
+      <button id="modeSolo" class="active-mode">⚫ 單人</button>
+      <button id="modeOnline" class="secondary">🌐 線上對戰</button>
+      <button id="modeWatch" class="secondary">👁️ 觀戰</button>
+      <span id="modeHint"></span>
+      <div class="controls-right">
+        <label for="aiDiff">AI 難度</label>
+        <select id="aiDiff">
+          <option value="easy">🟢 簡單</option>
+          <option value="medium" selected>🟡 中等</option>
+          <option value="hard">🔴 困難</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth (online mode) -->
+  <div id="onlineAuth" class="glass hidden">
+    <div class="row">
+      <input id="user" placeholder="帳號" autocomplete="username" />
+      <input id="pass" type="password" placeholder="密碼" autocomplete="current-password" />
+      <button id="register" class="secondary">📝 註冊</button>
+      <button id="login">🔑 登入</button>
+      <span id="auth"></span>
+    </div>
+  </div>
+
+  <!-- Room controls (online/watch) -->
+  <div id="onlineRoom" class="glass hidden">
+    <div class="row">
+      <input id="room" value="demo-room" placeholder="房間名稱" />
+      <button id="join">🚪 加入房間</button>
+      <button id="refreshRooms" class="secondary">🔄 刷新</button>
+      <button id="reset" class="secondary">🗑️ 重置棋盤</button>
+    </div>
+  </div>
+
+  <!-- Room list -->
+  <div id="roomsWrap" class="glass rooms hidden">
+    <b>📋 房間列表：</b>
+    <ul id="rooms"></ul>
+  </div>
+
+  <!-- Status -->
+  <div id="status">請選擇模式</div>
+
+  <!-- Board -->
+  <div class="board-wrap">
+    <canvas id="board" width="600" height="600"></canvas>
+  </div>
+</div>
+
+<script src="ai.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
