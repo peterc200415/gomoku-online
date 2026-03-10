@@ -54,9 +54,16 @@ systemctl --user daemon-reload
 systemctl --user enable --now gomoku-online.service
 ```
 
+## 反向代理範例 (Nginx / Proxy Manager)
+
+- Forward scheme: http
+- Forward host: <your-host-ip>
+- Forward port: 3789
+- Make sure "WebSocket Support / Allow upgrade" is enabled
+
 ## 注意事項 / Notes
-- 使用於正式環境時，建議前方串接 Nginx 或其他 Reverse Proxy，並啟用 TLS 與 WebSocket Upgrade 支援。
-- 務必將 `users.json` 加入 `.gitignore` 防止密碼外洩。
+- 對於正式環境，請使用 Reverse Proxy (Nginx 等) 並啟用 TLS 與 WebSocket Upgrade 支援。
+- 務必將 `users.json` 加入 `.gitignore` 防止密碼外洩，請妥善保管。
 
 ## License
 MIT

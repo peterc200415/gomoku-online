@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>五子棋網路對戰</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f5f5f5; }
+    .wrap { max-width: 980px; margin: 20px auto; padding: 12px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    input, button { padding: 8px 10px; }
+    #status { margin: 8px 0 14px; font-weight: 700; }
+
+    /* Canvas: allow responsive scaling, but keep click mapping correct in JS */
+    canvas { background: #d7a96b; border: 2px solid #333; width: 600px; height: 600px; max-width: 100%; aspect-ratio: 1 / 1; display: block; }
+
+    .rooms { background:#fff; border:1px solid #ddd; padding:8px; margin:10px 0; }
+    .rooms ul { margin: 6px 0 0; padding-left: 18px; }
+    .rooms li { margin: 4px 0; }
+
+    /* Mobile layout */
+    @media (max-width: 640px) {
+      .wrap { margin: 10px auto; padding: 10px; }
+      h2 { margin: 8px 0 10px; font-size: 18px; }
+      .row { flex-direction: column; align-items: stretch; }
+      input, button { width: 100%; box-sizing: border-box; }
+      #status { margin: 10px 0; }
+      .rooms { max-height: 180px; overflow: auto; }
+      canvas { width: 100%; height: auto; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h2>五子棋（單人 / 線上雙人 / 觀戰）</h2>
+
+  <div class="row">
+    <b>模式：</b>
+    <button id="modeSolo">單人</button>
+    <button id="modeOnline">線上對戰</button>
+    <button id="modeWatch">觀戰</button>
+    <span id="modeHint"></span>
+  </div>
+
+  <div id="onlineAuth" class="row" style="display:none;">
+    <input id="user" placeholder="帳號" />
+    <input id="pass" type="password" placeholder="密碼" />
+    <button id="register">註冊</button>
+    <button id="login">登入</button>
+    <span id="auth"></span>
+  </div>
+
+  <div id="onlineRoom" class="row" style="display:none;">
+    <input id="room" value="demo-room" />
+    <button id="join">加入房間</button>
+    <button id="refreshRooms">刷新房間</button>
+    <button id="reset">重置棋盤</button>
+  </div>
+
+  <div id="roomsWrap" class="rooms" style="display:none;">
+    <b>房間列表：</b>
+    <ul id="rooms"></ul>
+  </div>
+
+  <div id="status">請選擇模式</div>
+  <canvas id="board" width="600" height="600"></canvas>
+</div>
+
+<script>
+const SIZE = 15;
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const authEl = document.getElementById('auth');
+const roomsEl = document.getElementById('rooms');
+const modeHintEl = document.getElementById('modeHint');
+
+const onlineAuthEl = document.getElementById('onlineAuth');
+const onlineRoomEl = document.getElementById('onlineRoom');
+const roomsWrapEl = document.getElementById('roomsWrap');
+
+let mode = 'solo'; // solo | online | watch
+let ws, side = 0, turn = 1, winner = 0, username = '';
+let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+let reconnectTimer = null;
+
+function connect() {
+  if (mode === 'solo') return;
+  ws?.close();
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  statusEl.textContent = '連線中...';
+
+  ws.onopen = () => {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    statusEl.textContent = mode === 'watch' ? '已連線：觀戰模式（加入房間以觀戰）' : '已連線，請先登入';
+    // 連線後先抓房間列表
+    ws.send(JSON.stringify({ type:'rooms' }));
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'auth') {
+      if (msg.ok) { username = msg.username; authEl.textContent = `已登入：${username}`; }
+      else alert(msg.reason || '登入失敗');
+    }
+    if (msg.type === 'joined') {
+      side = msg.side; board = msg.board; turn = msg.turn; winner = msg.winner;
+      draw();
+    }
+    if (msg.type === 'state') {
+      board = msg.board; turn = msg.turn; winner = msg.winner;
+      draw();
+    }
+    if (msg.type === 'rooms') {
+      roomsEl.innerHTML = '';
+      (msg.rooms || []).forEach(r => {
+        const li = document.createElement('li');
+        li.textContent = `${r.roomId}（玩家:${r.players} 觀戰:${r.watcher}）`;
+        roomsEl.appendChild(li);
+      });
+    }
+  };
+
+  ws.onerror = () => {
+    statusEl.textContent = 'WebSocket 連線錯誤（請檢查 NPM WebSocket 代理）';
+  };
+
+  ws.onclose = () => {
+    statusEl.textContent = '連線中斷，2 秒後重連...';
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+}
+
+function draw() {
+  const pad = 30;
+  const gap = (canvas.width - pad*2) / (SIZE - 1);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle = '#333';
+  for (let i=0; i<SIZE; i++) {
+    const p = pad + i*gap;
+    ctx.beginPath(); ctx.moveTo(p,pad); ctx.lineTo(p,canvas.height-pad); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad,p); ctx.lineTo(canvas.width-pad,p); ctx.stroke();
+  }
+
+  for (let y=0; y<SIZE; y++) {
+    for (let x=0; x<SIZE; x++) {
+      const v = board[y][x];
+      if (!v) continue;
+      const cx = pad + x*gap;
+      const cy = pad + y*gap;
+      ctx.beginPath();
+      ctx.arc(cx, cy, gap*0.38, 0, Math.PI*2);
+      ctx.fillStyle = v === 1 ? '#111' : '#fff';
+      ctx.fill();
+      ctx.strokeStyle = '#111';
+      ctx.stroke();
+    }
+  }
+
+  let text;
+  if (mode === 'solo') {
+    text = winner ? `勝利：${winner===1?'你(黑)':'電腦(白)'}` : `單人模式｜輪到${turn===1?'你(黑)':'電腦(白)'}`;
+  } else {
+    text = side ? `線上模式｜你是${side===1?'黑子':'白子'} | 輪到${turn===1?'黑子':'白子'}` : '觀戰模式';
+    if (winner) text = `勝利：${winner===1?'黑子':'白子'}`;
+  }
+  statusEl.textContent = text;
+}
+
+const userEl = document.getElementById('user');
+const passEl = document.getElementById('pass');
+const roomEl = document.getElementById('room');
+
+function resetLocal() {
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  turn = 1;
+  winner = 0;
+  side = 1;
+  draw();
+}
+
+function inBounds(x,y){ return x>=0 && y>=0 && x<SIZE && y<SIZE; }
+function checkWin(x,y,s){
+  const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+  for (const [dx,dy] of dirs) {
+    let n=1;
+    for (const k of [1,-1]) {
+      let nx=x+dx*k, ny=y+dy*k;
+      while (inBounds(nx,ny) && board[ny][nx]===s) { n++; nx+=dx*k; ny+=dy*k; }
+    }
+    if (n>=5) return true;
+  }
+  return false;
+}
+
+function tryPlace(x,y,s){
+  if (!inBounds(x,y) || board[y][x]!==0 || winner) return false;
+  board[y][x]=s;
+  if (checkWin(x,y,s)) winner=s;
+  turn = winner ? turn : (s===1?2:1);
+  return true;
+}
+
+function aiMove(){
+  if (mode!=='solo' || winner || turn!==2) return;
+  // 1) winning move
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++) if (board[y][x]===0){
+    board[y][x]=2; const win=checkWin(x,y,2); board[y][x]=0;
+    if (win){ tryPlace(x,y,2); draw(); return; }
+  }
+  // 2) block player win
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++) if (board[y][x]===0){
+    board[y][x]=1; const win=checkWin(x,y,1); board[y][x]=0;
+    if (win){ tryPlace(x,y,2); draw(); return; }
+  }
+  // 3) center preference
+  const cx=(SIZE-1)/2, cy=(SIZE-1)/2;
+  let best=null;
+  for (let y=0;y<SIZE;y++) for (let x=0;x<SIZE;x++) if (board[y][x]===0){
+    const d=Math.abs(x-cx)+Math.abs(y-cy);
+    if (!best || d<best.d) best={x,y,d};
+  }
+  if (best) { tryPlace(best.x,best.y,2); draw(); }
+}
+
+function setMode(next){
+  mode = next;
+  modeHintEl.textContent = mode==='solo' ? '（不需登入，直接下棋）' : (mode==='online' ? '（需登入才能下棋）' : '（不需登入，只看盤）');
+  const showOnline = mode!=='solo';
+  onlineAuthEl.style.display = showOnline && mode==='online' ? '' : 'none';
+  onlineRoomEl.style.display = showOnline ? '' : 'none';
+  roomsWrapEl.style.display = showOnline ? '' : 'none';
+  if (mode==='solo') {
+    ws?.close();
+    resetLocal();
+  } else {
+    side = 0; winner = 0; turn = 1;
+    connect();
+    draw();
+  }
+}
+
+function canSend() {
+  return ws && ws.readyState === WebSocket.OPEN;
+}
+
+document.getElementById('modeSolo').onclick = () => setMode('solo');
+document.getElementById('modeOnline').onclick = () => setMode('online');
+document.getElementById('modeWatch').onclick = () => setMode('watch');
+
+document.getElementById('register').onclick = () => {
+  if (!canSend()) return alert('連線尚未建立，請稍後再試');
+  ws.send(JSON.stringify({ type:'register', username: userEl.value.trim(), password: passEl.value }));
+};
+document.getElementById('login').onclick = () => {
+  if (!canSend()) return alert('連線尚未建立，請稍後再試');
+  ws.send(JSON.stringify({ type:'login', username: userEl.value.trim(), password: passEl.value }));
+};
+document.getElementById('join').onclick = () => {
+  if (mode==='solo') return;
+  if (!canSend()) return alert('連線尚未建立，請稍後再試');
+  ws.send(JSON.stringify({ type:'join', roomId: roomEl.value.trim() || 'demo-room' }));
+};
+document.getElementById('refreshRooms').onclick = () => canSend() && ws.send(JSON.stringify({ type:'rooms' }));
+document.getElementById('reset').onclick = () => {
+  if (mode==='solo') { resetLocal(); return; }
+  canSend() && ws.send(JSON.stringify({ type:'reset' }));
+};
+
+canvas.addEventListener('click', (e) => {
+  if (mode === 'solo') {
+    if (winner || turn !== 1) return;
+  } else {
+    if (!ws || ws.readyState !== 1 || !side || winner || turn !== side) return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  // Map CSS pixels -> canvas coordinate space (important for mobile scaling)
+  const sx = canvas.width / rect.width;
+  const sy = canvas.height / rect.height;
+  const x0 = (e.clientX - rect.left) * sx;
+  const y0 = (e.clientY - rect.top) * sy;
+
+  const pad = 30;
+  const gap = (canvas.width - pad*2) / (SIZE - 1);
+  const x = Math.round((x0 - pad) / gap);
+  const y = Math.round((y0 - pad) / gap);
+
+  if (mode === 'solo') {
+    if (tryPlace(x, y, 1)) {
+      draw();
+      setTimeout(aiMove, 120);
+    }
+    return;
+  }
+  ws.send(JSON.stringify({ type:'move', x, y }));
+});
+
+setMode('solo');
+draw();
+</script>
+</body>
+</html>
